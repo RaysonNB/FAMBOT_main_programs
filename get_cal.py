@@ -34,3 +34,5 @@ inverse_kinematics = rospy.ServiceProxy('/open_manipulator/goal_joint_space_path
 response = inverse_kinematics(goal_position, goal_orientation, joint_angles)
 joint_angles = response.goal_joint_state.position
 
+joint1, joint2, joint3, joint4 = 0.000, 0.75, 1.0,-1.0
+set_joints(joint1, joint2, joint3, joint4, 2.0)
