@@ -1,6 +1,8 @@
 import rospy
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64
+from open_manipulator_msgs.srv import SetJointPosition, SetJointPositionRequest
+from open_manipulator_msgs.srv import SetKinematicsPose, SetKinematicsPoseRequest
 from math import pi, cos, sin
 
 # 机械臂各关节的初始角度
@@ -34,5 +36,5 @@ inverse_kinematics = rospy.ServiceProxy('/open_manipulator/goal_joint_space_path
 response = inverse_kinematics(goal_position, goal_orientation, joint_angles)
 joint_angles = response.goal_joint_state.position
 
-joint1, joint2, joint3, joint4 = 0.000, 0.75, 1.0,-1.0
+joint1, joint2, joint3, joint4 = joint_angles[0],joint_angles[1],joint_angles[2],joint_angles[3]
 set_joints(joint1, joint2, joint3, joint4, 2.0)
