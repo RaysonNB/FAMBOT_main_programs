@@ -9,7 +9,8 @@ from geometry_msgs.msg import Twist
 from pcms.pytorch_models import *
 from pcms.openvino_yolov8 import *
 import math
-
+import datetime
+import time
 #https://github.com/supercatex/code/blob/master/ros/demo3.py
 def callback_image(msg):
     global _frame
@@ -25,30 +26,6 @@ def get_real_xyz(x, y):
     b = 86.0 * np.pi / 180
     d = depth[y][x]
     h, w = depth.shape[:2]
-    '''
-    if d == 0:
-        for k in range(1, 15, 1):
-            if d == 0 and y - k >= 0:
-                for j in range(x - k, x + k, 1):
-                    if not (0 <= j < w): continue
-                    d = depth[y - k][j]
-                    if d > 0: break
-            if d == 0 and x + k < w:
-                for i in range(y - k, y + k, 1):
-                    if not (0 <= i < h): continue
-                    d = depth[i][x + k]
-                    if d > 0: break
-            if d == 0 and y + k < h:
-                for j in range(x + k, x - k, -1):
-                    if not (0 <= j < w): continue
-                    d = depth[y + k][j]
-                    if d > 0: break
-            if d == 0 and x - k >= 0:
-                for i in range(y + k, y - k, -1):
-                    if not (0 <= i < h): continue
-                    d = depth[i][x - k]
-                    if d > 0: break
-            if d > 0: break '''
             
     x = int(x) - int(w // 2)
     y = int(y) - int(h // 2)
@@ -145,12 +122,24 @@ if __name__ == "__main__":
     ax,ay,az,bx,by,bz=0,0,0,0,0,0
     rate = rospy.Rate(30)
     yolo_cnt = 0
+    
+    _cmd_vel = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
+    
+    now = datetime.datetime.now()
+    filename = now.strftime("%Y-%m-%d_%H-%M-%S.api")
+            
+    output_dir = "/home/pcms/catkin_ws/src/beginner_tutorials/src/m1_evidence/"
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    out = cv2.VideoWriter(output_dir + filename, fourcc, 25.0, (640, 480))
+    
+    DE=0
+    time.sleep(5)
     while not rospy.is_shutdown():
         rate.sleep()
         
         if _frame is None: continue
         if _depth is None: continue
-        
+        PDE=DE
         cnt = 1
         frame = _frame#.copy()
         depth=_depth#.copy()
@@ -179,7 +168,7 @@ if __name__ == "__main__":
             cnt=get_distance(px,py,pz,ax,ay,az,bx,by,bz)
             cv2.circle(frame, (cx, cy), 5, (0, 255, 0), -1)
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 5)
-            cv2.putText(frame, str(int(pz)), (cx,cy), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 3)
+            cv2.putText(frame, str(int(pz)), (cx,cy), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
         t_pose=None
         points=[]
         for i, pose in enumerate(poses):
@@ -188,7 +177,7 @@ if __name__ == "__main__":
                 if preds <= 0: continue
                 x,y = map(int,[x,y])
                 _,_,td=get_real_xyz(x, y)
-                if td>=1500: continue
+                if td>=2000: continue
                 if j in [8,10]:
                     point.append(j)
             if len(point) == 2:
@@ -198,6 +187,8 @@ if __name__ == "__main__":
         TTT=0
         E=0
         s_c=[]
+        
+        s_d=[]
         ggg=0
         flag=None
         if t_pose is not None:
@@ -213,30 +204,67 @@ if __name__ == "__main__":
                     E+=1
                     cx1 = (x2 - x1) // 2 + x1
                     cy1 = (y2 - y1) // 2 + y1
-
+                    
+                    
                     px,py,pz=get_real_xyz(cx1, cy1)
                     cnt=get_distance(px,py,pz,ax,ay,az,bx,by,bz)
-                    #cv2.putText(frame, str(int(cnt)), (x1+5, y1-30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 3)
+                    
                     cnt=int(cnt)
                     if cnt!=0 and cnt<=600: cnt=int(cnt)
                     else: cnt=9999
                     s_c.append(cnt)
+                    s_d.append(pz)
                     #print(cnt)
-
+            
             if ggg==0: s_c=[9999]
             TTT=min(s_c)
             E=s_c.index(TTT)
+            
+            msg=Twist()
             for i, detection in enumerate(bottle):
                 #print("1")
                 x1, y1, x2, y2, score, class_id = map(int, detection)
                 if(class_id == 39):
                     if i == E and E!=9999 and TTT <=700:
-                        cv2.putText(frame, str(int(TTT)//10), (x1 + 5, y1 - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 5)
+                        cx1 = (x2 - x1) // 2 + x1
+                        cy1 = (y2 - y1) // 2 + y1
+                        cv2.putText(frame, str(int(TTT)//10), (x1 + 5, y1 - 40), cv2.FONT_HERSHEY_SIMPLEX, 1.15, (0, 0, 255), 2)
                         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 5)
+                        
+                        rx, ry, rz = get_real_xyz(cx1, cy1)
+                        if(rz==0): continue
+                        angle = np.arctan2(rx, rz)
+                        print(angle)
+                        msg.angular.z=angle
+                        _cmd_vel.publish(msg)
+                        #time.sleep(1.5)
+                        #msg.angular.z=0
+                        #time.sleep(5)
+                        msg.angular.z=-angle
+                        _cmd_vel.publish(msg)
+                        
+                        msg.angular.z=0
+                        #time.sleep(2)
+                        
                         break
-        
-        cv2.imshow("frame", frame)
+                                
+                    else:
+                        v=s_c[i]
+                        cv2.putText(frame, str(int(v)), (x1+5, y1-30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         key_code = cv2.waitKey(1)
+        if key_code in [32]:
+            now = datetime.datetime.now()
+            filename = now.strftime("%Y-%m-%d_%H-%M-%S.jpg")
+            
+            output_dir = "/home/pcms/catkin_ws/src/beginner_tutorials/src/m1_evidence/"
+            
+            cv2.imwrite(output_dir + filename, frame)
+        
+        frame2=frame.copy()
+        
+        frame2 = cv2.resize(frame2, (640*2,480*2))
+        
+        cv2.imshow("frame", frame2)
         if key_code in [27, ord('q')]:
             break
     
