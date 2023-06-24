@@ -175,7 +175,7 @@ if __name__ == "__main__":
                     
                 #print(x2,x1,y1,y2)
                 w=abs(x2)-abs(x1)
-                h=abs(y1)-abs(y2)
+                h=abs(y2)-abs(y1)
                 print("w: ",w,"h: ", h)
                 w,h=abs(w),abs(h)
                 if cy<=160:
