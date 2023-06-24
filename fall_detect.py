@@ -174,10 +174,10 @@ if __name__ == "__main__":
                     if abs(cy-dy)<=50: ikun=99
                     
                 #print(x2,x1,y1,y2)
-                w=abs(x2)-abs(x1)
-                h=abs(y2)-abs(y1)
+                w=x2-x1
+                h=y2-y1
                 print("w: ",w,"h: ", h)
-                w,h=abs(w),abs(h)
+                w,h=w,h
                 if cy<=160:
                     fall+=1
                     print("cy")
