@@ -136,6 +136,7 @@ if __name__ == "__main__":
     step="dead"
     pre_z, pre_x=0,0
     cur_z, cur_x=0,0
+    test=0
     while not rospy.is_shutdown():
         rospy.Rate(10).sleep()
         
@@ -233,6 +234,7 @@ if __name__ == "__main__":
                         if i==0: b1+=1
                         if i==1: b2+=1
                         if i==2: b3+=1
+                        
                         break
                                 
                     else:
@@ -246,7 +248,7 @@ if __name__ == "__main__":
                 gg=bb
             print("b1: %d b2: %d b3: %d" % (b1, b2, b3))
         if step=="get":
-            if len(bb)<=0 and len(bb)>=3: continue
+            if len(bb)!=3: continue
             print(bb)
             h,w,c = outframe.shape
             x1, y1, x2, y2, score, class_id = map(int, bb[mark])
@@ -260,8 +262,8 @@ if __name__ == "__main__":
             print(angle)
             msg.angular.z=-angle
             _cmd_vel.publish(msg)
-            break
-            '''
+            
+            
             cx, cy = w // 2, h // 2
             for i in range(cy + 1, h):
                 if depth2[cy][cx] == 0 or 0 < depth2[i][cx] < depth2[cy][cx]:
@@ -269,7 +271,7 @@ if __name__ == "__main__":
             _,_,d = get_real_xyz(depth2,cx,cy)
             while d > 0 or abs(e) >= 1:
                 _,_,d1 = get_real_xyz(depth2,cx,cy)
-                e = d1 - 50 #number is he last distance
+                e = d1 - 550 #number is he last distance
                 if abs(e)<=1:
                     break
                 v = 0.001 * e
@@ -278,7 +280,14 @@ if __name__ == "__main__":
                 if v < 0:
                     v = max(v, -0.2)
                 print(d1, e, v)
-                move(v, 0)'''
+                move(v, 0)
+            t=3.0
+            time.sleep(3.0)
+            publisher_speaker.publish("can you give me the bag")
+            joint1, joint2, joint3, joint4 = 0.000, -1.0, 0.3,0.70
+            set_joints(joint1, joint2, joint3, joint4, t)
+            time.sleep(t)
+            open_gripper(t)
             break
             
         cv2.imshow("image", outframe)   
