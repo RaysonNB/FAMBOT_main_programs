@@ -10,7 +10,7 @@ class FollowMe(object):
         max_=1
         global dnn_yolo, _image, pree_cx,pree_cy
         cx,cy=0,0
-        rcx,rcy=0,0
+        rcx,rcy=9999,0
         frame = _image.copy()
         detections = dnn_yolo.forward(frame)[0]["det"]
         for i, detection in enumerate(detections):
@@ -27,16 +27,15 @@ class FollowMe(object):
                 cv2.putText(frame, "person", (x1+5, y1+15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
                 hh=x2-x1
                 ll=y2-y1
-                if ll*hh>max_:
+                _,_,hg=self.get_real_xyz(depth,cx,cy)
+                if ll*hh>max_ and hg<=1000:
                     max_=ll*hh
                     rcx,rcy=cx,cy
         
-        if rcx!=0:
-            pree_cx,pree_cy=rcx,rcy
-                
+        if rcx!=9999:
             return rcx,rcy,frame
         else:
-            return pree_cx,pree_cy,frame
+            return 0,0,frame
 
 
     def get_real_xyz(self, depth, x: int, y: int) -> Tuple[float, float, float]:
