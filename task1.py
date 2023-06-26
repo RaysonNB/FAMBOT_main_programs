@@ -552,7 +552,7 @@ if __name__ == "__main__":
                                 print(d1, e, v)
                                 move(v, 0)
                             say("I get it")
-                            for i in range(00):
+                            for i in range(200):
                                 msg.linear.x=0.2
                                 _cmd_vel.publish(msg)
                             
