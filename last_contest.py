@@ -332,6 +332,7 @@ if __name__ == "__main__":
                     print(d1, e, v)
                     move(v, 0)
                 step="grap"
+                step2="no"
         if step=="grap":
             t=3.0
             time.sleep(3.0)
@@ -339,10 +340,14 @@ if __name__ == "__main__":
             set_joints(joint1, joint2, joint3, joint4, t)
             time.sleep(t)
             close_gripper(t)
-            step="givehim"
-        if step=="givehim":
+            step="turnh"
+        if step=="turnh":
             angle_rad = math.atan(60/1)
             angle_deg = math.degrees(angle_rad)
+            msg.angular.z=-angle
+            _cmd_vel.publish(msg)
+            msg.angular.z=0
+        if step="givehim":
             detections = dnn_yolo.forward(frame2)[0]["det"]
             dc=999999
             mcx,mcy=0,0
@@ -355,13 +360,14 @@ if __name__ == "__main__":
                     dc=gd
                     mcx,mcy=cx,cy
             rx, ry, rz = get_real_xyz(depth2,mcx, mcy)
-            if(rz==0): continue
+            if(rz==0 and mx!=0): continue
             angle = np.arctan2(rx, rz)
             print(angle)
             msg.angular.z=-angle
             _cmd_vel.publish(msg)
             step == "put"
         if step=="put":
+            #go front
             joint1, joint2, joint3, joint4 = 0.000, 0.0, -0.5,1.0
             set_joints(joint1, joint2, joint3, joint4, t)
             time.sleep(t)
@@ -383,7 +389,7 @@ if __name__ == "__main__":
                     break
                 if "robot" in s and "stop" in s:
                     break
-            say("ends, thank you")
+            break
         cv2.imshow("image", frame2)   
         key = cv2.waitKey(1)
         if key in [ord('q'), 27]:
