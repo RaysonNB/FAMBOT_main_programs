@@ -226,6 +226,26 @@ def calc_angular_z(cx,tx):
     if z > 0: z = min(z, 0.3)
     if z < 0: z = max(z, -0.3)
     return z
+    
+def move_to(x, y, z, t):
+    service_name = "/goal_task_space_path_position_only"
+    rospy.wait_for_service(service_name)
+    
+    try:
+        service = rospy.ServiceProxy(service_name, SetKinematicsPose)
+        
+        request = SetKinematicsPoseRequest()
+        request.end_effector_name = "gripper"
+        request.kinematics_pose.pose.position.x = x
+        request.kinematics_pose.pose.position.y = y
+        request.kinematics_pose.pose.position.z = z
+        request.path_time = t
+        
+        response = service(request)
+        return response
+    except Exception as e:
+        rospy.loginfo("%s" % e)
+        return False
 if __name__ == "__main__": 
     rospy.init_node("demo")
     rospy.loginfo("demo node start!")
@@ -246,9 +266,8 @@ if __name__ == "__main__":
     print("load")
     dnn_yolo = Yolov8("yolov8n", device_name="GPU")
     print("yolo")
-    say("start the program")
     net_pose = HumanPoseEstimation(device_name="GPU")
-    step="findg"
+    step="get"
     f_cnt=0
     step2="dead"
     ax,ay,az,bx,by,bz=0,0,0,0,0,0
@@ -256,11 +275,21 @@ if __name__ == "__main__":
     pre_z, pre_x=0,0
     cur_z, cur_x=0,0
     test=0
+    p_list=[]
+    _cmd_vel = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
     topic_imu = "/imu/data"
     _imu=None
     rospy.Subscriber(topic_imu, Imu, callback_imu)
     rospy.wait_for_message(topic_imu, Imu)
-    _cmd_vel = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
+    say("start the program")
+    move_to(0.287,0,0.193,3.0)
+    time.sleep(2)
+    move_to(0.30,0.019,0.1,3.0)
+    time.sleep(3)
+    move_to(0.25,0.019,0.1,3.0)
+    time.sleep(2)
+    move_to(0.20,0.019,0.1,3.0)
+    time.sleep(2)
     while not rospy.is_shutdown():
         rospy.Rate(10).sleep()
         
@@ -278,7 +307,14 @@ if __name__ == "__main__":
             continue
         if step=="fall":
             print(f_cnt)
-            if f_cnt>=5: step="get"
+            if f_cnt>=5: 
+                say("Do you need any help")
+                time.sleep(3)
+                say("Rather you need me to clip the bottle on the side?")
+                time.sleep(3)
+                say("I understand that you may not be feeling well. Let me help you pick up the medicine to make you more comfortable.")
+                time.sleep(3)
+                step="get"
             detections = dnn_yolo.forward(frame2)[0]["det"]
             
             show=frame2
@@ -304,7 +340,7 @@ if __name__ == "__main__":
                             if preds <= 0: continue
                             x,y = map(int,[x,y])
                             _,_,td=get_real_xyz(depth2,x, y)
-                            if td>=2000: continue
+                            if td>=2000 and td !=0: continue
                             if j in [6,8]:
                                 point.append(j)
                         if len(point) == 2:
@@ -456,8 +492,9 @@ if __name__ == "__main__":
                 if v < 0:
                     v = max(v, -0.2)
                 move(0, v)
-                if abs(e) <= 10:
+                if abs(e) <= 6:
                     step2="go"
+                    
             if step2=="go":
                 
                 cx, cy = w // 2, h // 2
@@ -465,27 +502,66 @@ if __name__ == "__main__":
                     if depth2[cy][cx] == 0 or 0 < depth2[i][cx] < depth2[cy][cx]:
                         cy = i 
                 _,_,d = get_real_xyz(depth2,cx,cy)
-                e = d - 400 #number is he last distance
-                if abs(e)<=20:
-                    step="grap"
-                    step2="turn_next"
+                e = d - 190 #number is he last distance
+                if abs(e)<=25:
+                    step2="turn_again"
+                    
                 v = 0.001 * e
                 if v > 0:
                     v = min(v, 0.2)
                 if v < 0:
                     v = max(v, -0.2)
                 move(v, 0)
+                print(d, v)
+                cv2.imshow("turn", outframe) 
+            if step2=="turn_again":
+                if len(bb)<1: continue
+                min11=999999
+                ucx,ucy=0,0
+                for num in bb:
+                    x1, y1, x2, y2, score, class_id = map(int, num)
+                    cx2 = (x2 - x1) // 2 + x1
+                    cy2 = (y2 - y1) // 2 + y1
+                    _,_,d = get_real_xyz(depth2,cx2,cy2)
+                    if abs(w//2-cx2) < min11:
+                        min11=abs(w//2-cx2)
+                        ucx = cx2
+                        
+                h,w,c = outframe.shape
+                e = w//2 - ucx
+                v = 0.001 * e
+                if v > 0:
+                    v = min(v, 0.2)
+                if v < 0:
+                    v = max(v, -0.2)
+                move(0, v)
+                if abs(e) <= 4:
+                    step="grap"
+                    step2="none"
         if step=="grap":
             t=3.0
             open_gripper(t)
             time.sleep(3.0)
-            joint1, joint2, joint3, joint4 = 0.000, 1.0, -0.5,-0.6
-            set_joints(joint1, joint2, joint3, joint4, t)
+            h,w,c = frame2.shape
+            cx, cy = w // 2, h // 2
+            for i in range(cy + 1, h):
+                if depth2[cy][cx] == 0 or 0 < depth2[i][cx] < depth2[cy][cx]:
+                    cy = i 
+            _,_,d = get_real_xyz(depth2,cx,cy)
+            x,y,z=d/1000.0, 0.019, 0.06 #z 水平 y 上下 x 前後
+            
+            if x >= 0.25:
+                cntm=int((x-0.25)*1000//0.2)
+                for i in range(cntm): move(0.2,0)
+            #for i in range(100): move(0.2,0)
+            move_to(0.3,0.019,0.1,3.0)
+            time.sleep(2)
+            print(x)
             time.sleep(t)
             close_gripper(t)
             time.sleep(2)
             step="givehim"
-            
+            break
         if step=="givehim":
             turn(30)
             step="findg"
@@ -507,20 +583,22 @@ if __name__ == "__main__":
                 cy = (y2 - y1) // 2 + y1
                 _,_,hg=get_real_xyz(depth2,cx,cy)
                 if score > 0.5 and class_id == 0 and hg<=2500: 
+                    step2="turn"
                     #dnn_yolo.draw_bounding_box(detection, frame)
                     cv2.rectangle(frameg, (x1, y1), (x2, y2), (255, 0, 0), 2)
-                    yn="yes"
                     cv2.circle(frameg, (cx, cy), 5, (0, 0, 255), -1)
                     cv2.putText(frameg, "person", (x1+5, y1+15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
                     hh=x2-x1
                     ll=y2-y1
-                    if ll*hh>max_ and hg<last_distance and hg<1000:
+                    if hg<last_distance and hg<1000:
+                        tn="yes"
                         max_=ll*hh
                         rcx,rcy=cx,cy
                         last_distance=hg
+                        
             if rcx==0: continue
             _, _, d = get_real_xyz(depth2, rcx, rcy)
-            if d<300: step="put"
+            if d<=300: step="put"
             cur_x = calc_linear_x(d, 800)
             cur_z = calc_angular_z(cx, 320)
 
@@ -536,7 +614,7 @@ if __name__ == "__main__":
             cur_z = pre_z + dz
             
             if yn=="no":
-                cur_x,cur_z=0,0
+                cur_x,cur_z=0,0.2
                 
                 
             pre_x = cur_x 
@@ -554,7 +632,31 @@ if __name__ == "__main__":
             set_joints(joint1, joint2, joint3, joint4, t)
             
             time.sleep(2.5)
+            step="talk"
             break
+        if step=="talk":
+            say("Is there anything else I can help you with?")
+            time.sleep(3)
+            say("Do you feel better now? If you need any help, please let me know. I will do my best to assist you.")
+            step="person1"
+        if step=="person1":
+            s=s.lower()
+            if "weak" in s or "glass" in s or "water" or "feel" in s: 
+                say("Of course")
+                turn(-30)
+                step="perosn2"
+        if step=="person2":
+            s=s.lower()
+            if "thank" in s or "you" in s or "are" or "help" in s: 
+                turn(30)
+                say("It's my pleasure to assist you. If you need any further help, please don't hesitate to let me know.")
+                step="person3"
+        if step=="person3":
+            s=s.lower()
+            if "better " in s or "now" in s or "concern" or "thank" in s or "you" in s: 
+                turn(30)
+                say("You're welcome. I'm always here to serve you. Please take care of yourself. If you need any more help or have any other concerns, please feel free to let me know.")
+                break
         if step=="get":
             E=outframe.copy()
         else:
