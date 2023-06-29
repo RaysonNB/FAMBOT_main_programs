@@ -41,7 +41,7 @@ class FollowMe(object):
             cx = (x2 - x1) // 2 + x1
             cy = (y2 - y1) // 2 + y1
             _, _, hg = self.get_real_xyz(up_depth, cx, cy)
-            if score > 0.5 and class_id == 0 and hg <= 2500:
+            if score >= 0.6 and class_id == 0 and hg <= 1800:
                 #dnn_yolo.draw_bounding_box(detection, frame)
                 cv2.rectangle(up_image, (x1, y1), (x2, y2), (255, 0, 0), 2)
                 yn = "yes"
@@ -113,9 +113,9 @@ class FollowMe(object):
         p = 0.0005
         x = p * e
         if x > 0:
-            x = min(x, 0.5)
+            x = min(x, 0.3)
         if x < 0:
-            x = max(x, -0.5)
+            x = max(x, -0.3)
         return x
 
     def calc_angular_z(self, cx: float, tx: float) -> float:
@@ -125,28 +125,28 @@ class FollowMe(object):
         p = 0.0025
         z = p * e
         if z > 0:
-            z = min(z, 0.3)
+            z = min(z, 0.2)
         if z < 0:
-            z = max(z, -0.3)
+            z = max(z, -0.2)
         return z
 
-    def calc_cmd_vel(self, image, depth) -> Tuple[float, float]:
-        image = image.copy()
-        depth = depth.copy()
+    def calc_cmd_vel(self, image1, depth1) -> Tuple[float, float]:
+        image = image1.copy()
+        depth = depth1.copy()
 
         cx, cy, frame, yn = self.find_cx_cy()
 
         print(cx, cy)
         _, _, d = self.get_real_xyz(depth, cx, cy)
 
-        cur_x = self.calc_linear_x(d, 800)
+        cur_x = self.calc_linear_x(d, 500)
         cur_z = self.calc_angular_z(cx, 320)
 
         dx = cur_x - self.pre_x
         if dx > 0:
-            dx = min(dx, 0.1)
+            dx = min(dx, 0.3)
         if dx < 0:
-            dx = max(dx, -0.1)
+            dx = max(dx, -0.3)
 
         dz = cur_z - self.pre_z
         if dz > 0:
@@ -154,11 +154,12 @@ class FollowMe(object):
         if dz < 0:
             dz = max(dz, -0.2)
 
-        cur_x = self.pre_x + dx
-        cur_z = self.pre_z + dz
-
         if yn == "no":
             cur_x, cur_z = 0, 0.2
+            return cur_x, cur_z
+            
+        cur_x = self.pre_x + dx
+        cur_z = self.pre_z + dz
 
         self.pre_x = cur_x
         self.pre_z = cur_z
@@ -466,11 +467,10 @@ if __name__ == "__main__":
     move_to(0.25,0.019,0.0,3.0)
     time.sleep(2)
     move_to(0.20,0.019,0.0,3.0)
-    time.sleep(2)
     time.sleep(3)
     while not rospy.is_shutdown():
         #voice check
-        
+        print("in")
         if s!="" and s!=pre_s:
             print(s)
             pre_s = s
@@ -491,7 +491,7 @@ if __name__ == "__main__":
         down_depth = _depth.copy()
         up_image= _image1.copy()
         up_depth= _depth1.copy()
-        if action!="follow":
+        if step=="get_bag":
             #yolov8 detect
             detections = dnn_yolo.forward(down_image)[0]["det"]
             for i, detection in enumerate(detections):
@@ -500,7 +500,7 @@ if __name__ == "__main__":
                 score = detection[4]
                 cx = (x2 - x1) // 2 + x1
                 cy = (y2 - y1) // 2 + y1
-                if score > 0.5 and class_id == class_need:
+                if score > 0.55 and class_id == class_need:
                     detection_list.append([x1,y1,x2,y2,cx,cy])
                     cv2.rectangle(down_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
                     cv2.circle(down_image, (cx, cy), 5, (0, 255, 0), -1)
@@ -589,21 +589,18 @@ if __name__ == "__main__":
                             v = max(v, -0.3)
                         move(0, v)
                         print(e)
-                        if abs(e) <= 7:
+                        if abs(e) <= 5:
                             say("walk")
                             action="front"
                             move_turn="none"
                             step="none"
                             print("ys")
-                    #action="get_move"
-                    #move_turn="turn"
-                    #step="get_bag"
         
         if step=="check_voice":
              if "thank" in s or "stop" in s or "now" in s or "Thank" in s or "Stop" in s or "THANK" in s or "STOP" in s or "NOW" in s or "you" in s or "You" in s:
                 action="none"
                 say("I will go back now, bye bye")
-                joint1, joint2, joint3, joint4 = 0.000, 0.0, -0.5,1.0
+                joint1, joint2, joint3, joint4 = 0.000, 0.0, 0,1.2
                 set_joints(joint1, joint2, joint3, joint4, t)
                 time.sleep(t)
                 open_gripper(t)
@@ -616,7 +613,7 @@ if __name__ == "__main__":
                 step="none"
         
         #action hardware
-        if action=="none": continue
+        #if action=="none": continue
         if action=="front":
             print("front")
             cx, cy = w // 2, h // 2
@@ -648,13 +645,15 @@ if __name__ == "__main__":
             for i in range(900): move(0.2,0)
             say("I get it")
             time.sleep(t)
+            close_gripper(t)
+            time.sleep(t)
             move_to(0.30,-0.03,0.0,3.0)
             time.sleep(3)
-            close_gripper(t)
+            
             joint1, joint2, joint3, joint4 = -0.106, 0.419, 0.365, -1.4
             set_joints(joint1, joint2, joint3, joint4, t)
             time.sleep(t)
-            joint1, joint2, joint3, joint4 = 0.0, 0.0, 0.0, 0.0
+            joint1, joint2, joint3, joint4 = 0,0,0, -1.0
             set_joints(joint1, joint2, joint3, joint4, t)
             time.sleep(t)
             time.sleep(3)
@@ -673,9 +672,8 @@ if __name__ == "__main__":
             if x==0 and z==0.2: say("left")
             #say("move")
             step="check_voice"
-        '''
         if action == "back":
-            chassis.move_to(-6.82,-6.37,0.00322)
+            chassis.move_to(6.73,-2.59,0.00171)
             #checking
             while not rospy.is_shutdown():
                 # 4. Get the chassis status.
@@ -684,7 +682,7 @@ if __name__ == "__main__":
                 if code == 3:
                     break
             time.sleep(1)
-            chassis.move_to(-6.61,-4.48,0.00561)
+            chassis.move_to(6.78,-2.68,-0.00129)
             #checking
             while not rospy.is_shutdown():
                 # 4. Get the chassis status.
@@ -693,7 +691,16 @@ if __name__ == "__main__":
                 if code == 3:
                     break
             time.sleep(1)
-            chassis.move_to(-6.7,-2.62,0.00285)
+            chassis.move_to(6.39,-5.1,-0.00173)
+            #checking
+            while not rospy.is_shutdown():
+                # 4. Get the chassis status.
+                code = chassis.status_code
+                text = chassis.status_text
+                if code == 3:
+                    break
+            time.sleep(1)
+            chassis.move_to(-3.29,-4.12,0.00359)
             #checking
             while not rospy.is_shutdown():
                 # 4. Get the chassis status.
@@ -703,7 +710,7 @@ if __name__ == "__main__":
                     break
             time.sleep(1)
             break
-        '''
+        
         print("show")
         h,w,c = up_image.shape
         upout=cv2.line(up_image, (320,0), (320,500), (0,255,0), 5)
