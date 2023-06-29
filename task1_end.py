@@ -27,39 +27,71 @@ class FollowMe(object):
 
     def find_cx_cy(self) -> Tuple[int, int]:
         max_ = 1
-        global dnn_follow, up_image, pree_cx, pree_cy, up_depth
+        global up_image, pree_cx, pree_cy, up_depth,net_pose
         cx, cy = 0, 0
         rcx, rcy = 0, 0
-        detections = dnn_follow.forward(up_image)[0]["det"]
         yn = "no"
+        l=[5,6,11,12]
         h, w = up_image.shape[:2]
-        for i, detection in enumerate(detections):
-            #print(detection)
-            x1, y1, x2, y2, score, class_id = map(int, detection)
-            score = detection[4]
-            #print(x1, y1, x2, y2, score, class_id)
-            cx = (x2 - x1) // 2 + x1
-            cy = (y2 - y1) // 2 + y1
-            _, _, hg = self.get_real_xyz(up_depth, cx, cy)
-            if score >= 0.6 and class_id == 0 and hg <= 1800:
-                #dnn_yolo.draw_bounding_box(detection, frame)
-                cv2.rectangle(up_image, (x1, y1), (x2, y2), (255, 0, 0), 2)
-                yn = "yes"
-                cv2.circle(up_image, (cx, cy), 5, (0, 0, 255), -1)
-                cv2.putText(up_image, "person", (x1+5, y1+15),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-                hh = x2-x1
-                ll = y2-y1
-                if ll*hh > max_:
-                    max_ = ll*hh
-                    rcx, rcy = cx, cy
-        if rcx != 0:
-            pree_cx, pree_cy = rcx, rcy
+        pose = None
+        poses = net_pose.forward(up_image)
+        for i, pose in enumerate(poses):
+            point = []
+            for j, (x, y, preds) in enumerate(pose):  # x: ipex 坐標 y: ipex 坐標 preds: 准度
+                if preds <= 0:
+                    continue
+                x, y = map(int, [x, y])
+                _,_,hg=self.get_real_xyz(up_depth,x,y)
+                if hg>=2000: continue
+                for num in [5, 12]:
+                    point.append(j)
+            if len(point) == 2:
+                pose = poses[i]
+                break
+        if pose is not None:
+            cx5, cy5, cx6, cy6, cx11, cy11, cx12, cy12 = 0, 0, 0, 0, 0, 0, 0, 0
+            n1, n2, n3, n4 = 5, 6, 11, 12
+            #print(pose)
+            cx5, cy5 = self.get_pose_target(pose, n1)
+            cx6, cy6 = self.get_pose_target(pose, n2)
+            cx11, cy11 = self.get_pose_target(pose, n3)
+            cx12, cy12 = self.get_pose_target(pose, n4)
 
-            return rcx, rcy, up_image, yn
-        else:
-            return pree_cx, pree_cy, up_image, yn
+            if cx5 != -1 and cx12 != -1:
+                
+                ax, ay, az = self.get_real_xyz(up_depth, cx5, cy5)
 
+                
+                bx, by, bz = self.get_real_xyz(up_depth, cx12, cy12)
+                rcx = (cx12 - cx5) // 2 + cx5
+                rcy = (cy12 - cy5) // 2 + cy5
+                cv2.circle(up_image, (rcx, rcy), 5, (0, 255, 0), -1)
+                cv2.rectangle(up_image, (cx5,cy5), (cx12,cy12), (0, 0,255), 1)
+            elif cx6 != -1 and cx11 != -1:
+
+                
+                ax, ay, az = self.get_real_xyz(up_depth, cx6, cy6)
+
+                
+                bx, by, bz = self.get_real_xyz(up_depth, cx11, cy11)
+                
+                rcx = (cx11 - cx6) // 2 + cx6
+                rcy = (cy11 - cy6) // 2 + cy6
+                cv2.circle(up_image, (rcx, rcy), 5, (0, 255, 0), -1)
+                #cv2.rectangle(up_image, (cx6,cy6), (cx11,cy11), (0, 0,255), 1)
+            else:
+                return 0, 0, up_image, "no"
+            return rcx, rcy, up_image, "yes"
+        return 0, 0, up_image, "no"
+    def get_pose_target(self, pose, num):
+        p = []
+        for i in [num]:
+            if pose[i][2] > 0:
+                p.append(pose[i])
+            
+        if len(p) == 0:
+            return -1, -1
+        return int(p[0][0]), int(p[0][1])
     def get_real_xyz(self, depth, x: int, y: int) -> Tuple[float, float, float]:
         if x < 0 or y < 0:
             return 0, 0, 0
@@ -130,11 +162,14 @@ class FollowMe(object):
             z = max(z, -0.2)
         return z
 
-    def calc_cmd_vel(self, image1, depth1) -> Tuple[float, float]:
-        image = image1.copy()
-        depth = depth1.copy()
+    def calc_cmd_vel(self, image, depth) -> Tuple[float, float]:
+        image = image.copy()
+        depth = depth.copy()
 
         cx, cy, frame, yn = self.find_cx_cy()
+        if yn == "no":
+            cur_x, cur_z = 0, 0
+            return cur_x, cur_z,frame,"no"
 
         print(cx, cy)
         _, _, d = self.get_real_xyz(depth, cx, cy)
@@ -154,19 +189,13 @@ class FollowMe(object):
         if dz < 0:
             dz = max(dz, -0.2)
 
-        if yn == "no":
-            cur_x, cur_z = 0, 0.2
-            return cur_x, cur_z
-            
         cur_x = self.pre_x + dx
         cur_z = self.pre_z + dz
 
         self.pre_x = cur_x
         self.pre_z = cur_z
 
-        return cur_x, cur_z
-
-
+        return cur_x, cur_z,frame,"yes"
 def move(forward_speed: float = 0, turn_speed: float = 0):
     global _cmd_vel
     msg = Twist()
@@ -600,20 +629,24 @@ if __name__ == "__main__":
              if "thank" in s or "stop" in s or "now" in s or "Thank" in s or "Stop" in s or "THANK" in s or "STOP" in s or "NOW" in s or "you" in s or "You" in s:
                 action="none"
                 say("I will go back now, bye bye")
-                joint1, joint2, joint3, joint4 = 0.000, 0.0, 0,1.2
+                joint1, joint2, joint3, joint4 = 0.000, 0.0, 0, 1.2
                 set_joints(joint1, joint2, joint3, joint4, t)
                 time.sleep(t)
                 open_gripper(t)
-                time.sleep(2)
+                time.sleep(3)
+                close_gripper(t)
+                time.sleep(3)
+                open_gripper(t)
+                time.sleep(3)
+                close_gripper(t)
+                time.sleep(3)
                 joint1, joint2, joint3, joint4 = 0.000, -1.0, 0.3,0.70
                 set_joints(joint1, joint2, joint3, joint4, t)
                 
                 time.sleep(2.5)
                 action="back"
                 step="none"
-        
-        #action hardware
-        #if action=="none": continue
+
         if action=="front":
             print("front")
             cx, cy = w // 2, h // 2
@@ -638,7 +671,6 @@ if __name__ == "__main__":
             move_turn="none"
             step="none"
             
-                  
         if action=="grap":
             move_to(0.20,-0.03,0.0,3.0)
             time.sleep(3)
@@ -667,10 +699,12 @@ if __name__ == "__main__":
         if action=="follow":
             print('follow')
             msg=Twist()
-            x, z = _fw.calc_cmd_vel(up_image, up_depth)
+            x, z, up_image,yn = _fw.calc_cmd_vel(up_image, up_depth)
+            print("turn_x_z:", x, z)
+            if yn=="no":
+                x,z=0,0
+                say("slower")
             move(x,z)
-            if x==0 and z==0.2: say("left")
-            #say("move")
             step="check_voice"
         if action == "back":
             chassis.move_to(6.73,-2.59,0.00171)
